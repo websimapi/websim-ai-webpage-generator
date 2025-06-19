@@ -199,6 +199,161 @@ const PageGenerator = {
         }
     },
 
+    async iterateOnCachedPage(promptText, cachedPage, updateCallbacks) {
+        const { updateProgress, updateStatus, updateStep } = updateCallbacks;
+        const TOTAL_STEPS = 12;
+
+        console.log(`Starting iteration on cached page for prompt: "${promptText}"`);
+        console.log("Cached page HTML length:", cachedPage.html.length);
+        console.log("Cached page CSS length:", cachedPage.css.length);
+        console.log("Cached page JS length:", cachedPage.js.length);
+
+        try {
+            // Step 1-2: Skip initial analysis, go straight to visual critique
+            updateStep(`Step 1/${TOTAL_STEPS}: Analyzing cached implementation...`);
+            updateProgress(1);
+            updateStatus("Taking screenshot of current cached version...");
+            
+            const screenshotUrl = await this.takeScreenshot(cachedPage.html, cachedPage.css, cachedPage.js);
+            updateStatus("Screenshot captured, analyzing current implementation...");
+
+            const iterationCritique = await websim.chat.completions.create({
+                messages: [
+                    {
+                        role: "system",
+                        content: "You are a senior web developer performing an iterative improvement analysis. This is a previously generated webpage that needs further refinement. Analyze the screenshot and code to identify: 1) Areas that could be enhanced visually, 2) Functionality that could be improved or added, 3) User experience optimizations, 4) Performance or code quality improvements. Provide specific, actionable suggestions for making this implementation significantly better."
+                    },
+                    {
+                        role: "user",
+                        content: [
+                            { 
+                                type: "text", 
+                                text: `Original Prompt: "${promptText}"\n\nThis is a cached webpage that needs iterative improvement. What specific enhancements can make this better?\n\nCurrent HTML:\n${cachedPage.html}\n\nCurrent CSS:\n${cachedPage.css}\n\nCurrent JavaScript:\n${cachedPage.js}`
+                            },
+                            {
+                                type: "image_url",
+                                image_url: { url: screenshotUrl },
+                            },
+                        ],
+                    },
+                ],
+            });
+            const critique = iterationCritique.content;
+            updateStatus(`Iteration analysis complete: ${critique.substring(0, 200)}...`);
+            console.log("Iteration Critique:", critique);
+            updateProgress(2);
+
+            // Steps 3-5: First iteration improvements
+            updateStep(`Step 3/${TOTAL_STEPS}: Enhancing HTML based on analysis...`);
+            const htmlCompletion_iter1 = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an expert HTML developer. Improve the provided HTML based on the iteration critique. Focus on adding new features, improving structure, and enhancing semantic markup. Respond with only the complete, improved HTML code for the <body> tag." },
+                    { role: "user", content: `Iteration Critique:\n${critique}\n\nCurrent HTML:\n${cachedPage.html}` },
+                ],
+            });
+            const html_iter1 = htmlCompletion_iter1.content.replace(/```html|```/g, '').trim();
+            updateStatus(html_iter1);
+            updateProgress(3);
+
+            updateStep(`Step 4/${TOTAL_STEPS}: Enhancing CSS based on analysis...`);
+            const cssCompletion_iter1 = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an expert CSS developer. Improve the provided CSS based on the iteration critique and enhanced HTML. Focus on visual enhancements, animations, responsiveness, and modern styling techniques. Respond with only the complete, improved CSS code." },
+                    { role: "user", content: `Iteration Critique:\n${critique}\n\nEnhanced HTML:\n${html_iter1}\n\nCurrent CSS:\n${cachedPage.css}` },
+                ],
+            });
+            const css_iter1 = cssCompletion_iter1.content.replace(/```css|```/g, '').trim();
+            updateStatus(css_iter1);
+            updateProgress(4);
+
+            updateStep(`Step 5/${TOTAL_STEPS}: Enhancing JavaScript based on analysis...`);
+            const jsCompletion_iter1 = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an expert JavaScript developer. Improve the provided JavaScript based on the iteration critique and enhanced HTML. Focus on adding new interactive features, improving user experience, and optimizing performance. Respond with only the complete, improved JavaScript code." },
+                    { role: "user", content: `Iteration Critique:\n${critique}\n\nEnhanced HTML:\n${html_iter1}\n\nCurrent JavaScript:\n${cachedPage.js}` },
+                ],
+            });
+            const js_iter1 = jsCompletion_iter1.content.replace(/```javascript|```js|```/g, '').trim();
+            updateStatus(js_iter1);
+            updateProgress(5);
+
+            // Steps 6-8: Continue with existing refinement process
+            updateStep(`Step 6/${TOTAL_STEPS}: Visual validation of improvements...`);
+            updateStatus("Capturing screenshot of improved version...");
+            const screenshotUrl_iter1 = await this.takeScreenshot(html_iter1, css_iter1, js_iter1);
+            updateStatus("Analyzing visual improvements...");
+
+            const refinementCritique = await websim.chat.completions.create({
+                messages: [
+                    { 
+                        role: "system", 
+                        content: "You are a senior web developer performing final validation of iterative improvements. Compare this enhanced version with the original critique to assess progress. Provide final refinement suggestions for production readiness."
+                    },
+                    { 
+                        role: "user", 
+                        content: [
+                            {
+                                type: "text",
+                                text: `Original Prompt: "${promptText}"\n\nOriginal Critique: ${critique}\n\nHow well were the improvements implemented? What final touches are needed?\n\nImproved HTML:\n${html_iter1}\n\nImproved CSS:\n${css_iter1}\n\nImproved JavaScript:\n${js_iter1}`
+                            },
+                            {
+                                type: "image_url",
+                                image_url: { url: screenshotUrl_iter1 },
+                            },
+                        ],
+                    },
+                ],
+            });
+            const refinement = refinementCritique.content;
+            updateStatus(`Final refinement analysis: ${refinement.substring(0, 200)}...`);
+            console.log("Refinement Critique:", refinement);
+            updateProgress(6);
+
+            // Steps 9-12: Final polishing
+            updateStep(`Step 9/${TOTAL_STEPS}: Final HTML polishing...`);
+            const htmlCompletion_final = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an expert HTML developer. Apply final polish to the HTML based on the refinement critique. Respond with only the complete, production-ready HTML code for the <body> tag." },
+                    { role: "user", content: `Final Refinement:\n${refinement}\n\nCurrent HTML:\n${html_iter1}` },
+                ],
+            });
+            const html_final = htmlCompletion_final.content.replace(/```html|```/g, '').trim();
+            updateStatus(html_final);
+            updateProgress(9);
+
+            updateStep(`Step 10/${TOTAL_STEPS}: Final CSS polishing...`);
+            const cssCompletion_final = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an expert CSS developer. Apply final polish to the CSS based on the refinement critique and final HTML. Respond with only the complete, production-ready CSS code." },
+                    { role: "user", content: `Final Refinement:\n${refinement}\n\nFinal HTML:\n${html_final}\n\nCurrent CSS:\n${css_iter1}` },
+                ],
+            });
+            const css_final = cssCompletion_final.content.replace(/```css|```/g, '').trim();
+            updateStatus(css_final);
+            updateProgress(10);
+
+            updateStep(`Step 11/${TOTAL_STEPS}: Final JavaScript polishing...`);
+            const jsCompletion_final = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an expert JavaScript developer. Apply final polish to the JavaScript based on the refinement critique and final HTML. Respond with only the complete, production-ready JavaScript code." },
+                    { role: "user", content: `Final Refinement:\n${refinement}\n\nFinal HTML:\n${html_final}\n\nCurrent JavaScript:\n${js_iter1}` },
+                ],
+            });
+            const js_final = jsCompletion_final.content.replace(/```javascript|```js|```/g, '').trim();
+            updateStatus(js_final);
+            updateProgress(11);
+
+            updateStep(`Step 12/${TOTAL_STEPS}: Iteration complete!`);
+            updateProgress(12);
+
+            return { html: html_final, css: css_final, js: js_final };
+
+        } catch (error) {
+            console.error("Error during page iteration:", error);
+            throw error;
+        }
+    },
+
     takeScreenshot(html, css, js) {
         return new Promise((resolve, reject) => {
             console.log("Starting screenshot capture process...");

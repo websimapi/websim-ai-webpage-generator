@@ -32,7 +32,7 @@ const App = () => {
         }
     };
 
-    const handlePromptClick = async (promptText) => {
+    const handlePromptClick = async (promptText, promptId) => {
         if (isLoading) return;
 
         setIsLoading(true);
@@ -55,7 +55,38 @@ const App = () => {
         };
 
         try {
-            const result = await PageGenerator.generatePage(promptText, updateCallbacks);
+            // Check if this prompt has cached results
+            const promptRecord = prompts.find(p => p.id === promptId);
+            const hasCachedResults = promptRecord && promptRecord.cachedHtml;
+            
+            let result;
+            if (hasCachedResults) {
+                updateCallbacks.updateStatus("Found cached version - iterating to improve it...");
+                console.log("Using cached results as starting point for iteration");
+                result = await PageGenerator.iterateOnCachedPage(
+                    promptText, 
+                    {
+                        html: promptRecord.cachedHtml,
+                        css: promptRecord.cachedCss,
+                        js: promptRecord.cachedJs
+                    },
+                    updateCallbacks
+                );
+            } else {
+                updateCallbacks.updateStatus("No cached version found - generating from scratch...");
+                console.log("No cached results found, generating from scratch");
+                result = await PageGenerator.generatePage(promptText, updateCallbacks);
+            }
+            
+            // Cache the results
+            console.log("Caching generated results...");
+            await room.collection('prompts_v1').update(promptId, {
+                cachedHtml: result.html,
+                cachedCss: result.css,
+                cachedJs: result.js,
+                lastGenerated: new Date().toISOString()
+            });
+            
             setGeneratedPage(result);
             updateCallbacks.updateStep("Generation complete! Opening page...");
             updateCallbacks.updateStatus("All steps completed successfully!");
