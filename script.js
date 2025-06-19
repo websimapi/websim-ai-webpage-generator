@@ -11,6 +11,7 @@ const App = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [loadingProgress, setLoadingProgress] = useState(0);
     const [loadingStatus, setLoadingStatus] = useState("");
+    const [stepDescription, setStepDescription] = useState("");
     const [generatedPage, setGeneratedPage] = useState(null);
     const [showGeneratedPage, setShowGeneratedPage] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,12 +42,15 @@ const App = () => {
         setIsLoading(true);
         setLoadingProgress(0);
         setGeneratedPage(null);
+        setStepDescription("");
+        setLoadingStatus("Initializing generation process...");
 
         try {
             const updateStatus = (text) => setLoadingStatus(text.replace(/\n/g, ' '));
+            const updateStep = (text) => setStepDescription(text);
 
             // Step 1: Analysis
-            updateStatus("Step 1/8: Analyzing prompt and planning structure...");
+            updateStep("Step 1/8: Analyzing prompt and planning structure...");
             setLoadingProgress(5);
             const analysisCompletion = await websim.chat.completions.create({
                 messages: [
@@ -59,7 +63,7 @@ const App = () => {
             setLoadingProgress(12.5);
 
             // Step 2: HTML (v1)
-            updateStatus("Step 2/8: Generating initial HTML...");
+            updateStep("Step 2/8: Generating initial HTML...");
             const htmlCompletion_v1 = await websim.chat.completions.create({
                 messages: [
                     { role: "system", content: "You are an expert HTML developer. Based on the user's prompt and the provided development plan, generate clean, semantic HTML code for the webpage. Do not include any CSS, JavaScript, or markdown formatting. Respond with only the raw HTML code inside a <body> tag." },
@@ -71,7 +75,7 @@ const App = () => {
             setLoadingProgress(25);
 
             // Step 3: CSS (v1)
-            updateStatus("Step 3/8: Generating initial CSS...");
+            updateStep("Step 3/8: Generating initial CSS...");
             const cssCompletion_v1 = await websim.chat.completions.create({
                 messages: [
                     { role: "system", content: "You are an expert CSS developer. Based on the user's prompt, the development plan, and the provided HTML, generate CSS to style the webpage. Do not include any HTML, JavaScript, or markdown formatting. Respond with only the raw CSS code." },
@@ -83,7 +87,7 @@ const App = () => {
             setLoadingProgress(37.5);
 
             // Step 4: JavaScript (v1)
-            updateStatus("Step 4/8: Generating initial JavaScript...");
+            updateStep("Step 4/8: Generating initial JavaScript...");
             const jsCompletion_v1 = await websim.chat.completions.create({
                 messages: [
                     { role: "system", content: "You are an expert JavaScript developer. Based on the user's prompt, plan, and HTML, generate the necessary JavaScript to make the page interactive. Do not include any HTML, CSS, or markdown formatting. Respond with only the raw JavaScript code." },
@@ -95,7 +99,7 @@ const App = () => {
             setLoadingProgress(50);
 
             // Step 5: Critique
-            updateStatus("Step 5/8: Critiquing generated code...");
+            updateStep("Step 5/8: Critiquing generated code...");
             const critiqueCompletion = await websim.chat.completions.create({
                 messages: [
                     { role: "system", content: "You are a senior web developer performing a code review. Analyze the provided HTML, CSS, and JavaScript. Provide a concise critique and actionable suggestions for improvement in terms of structure, style, functionality, and best practices. This critique will guide a second generation pass." },
@@ -107,7 +111,7 @@ const App = () => {
             setLoadingProgress(62.5);
 
             // Step 6: HTML (v2)
-            updateStatus("Step 6/8: Refining HTML based on critique...");
+            updateStep("Step 6/8: Refining HTML based on critique...");
             const htmlCompletion_v2 = await websim.chat.completions.create({
                  messages: [
                     { role: "system", content: "You are an expert HTML developer. Revise the initial HTML based on the provided critique to improve it. Respond with only the complete, raw, revised HTML code for the <body> tag." },
@@ -119,7 +123,7 @@ const App = () => {
             setLoadingProgress(75);
 
             // Step 7: CSS (v2)
-            updateStatus("Step 7/8: Refining CSS based on critique...");
+            updateStep("Step 7/8: Refining CSS based on critique...");
             const cssCompletion_v2 = await websim.chat.completions.create({
                  messages: [
                     { role: "system", content: "You are an expert CSS developer. Revise the initial CSS based on the provided critique and the (potentially updated) HTML. Respond with only the complete, raw, revised CSS code." },
@@ -131,7 +135,7 @@ const App = () => {
             setLoadingProgress(87.5);
 
             // Step 8: JavaScript (v2)
-            updateStatus("Step 8/8: Refining JavaScript based on critique...");
+            updateStep("Step 8/8: Refining JavaScript based on critique...");
             const jsCompletion_v2 = await websim.chat.completions.create({
                 messages: [
                     { role: "system", content: "You are an expert JavaScript developer. Revise the initial JavaScript based on the provided critique and the revised HTML. Respond with only the complete, raw, revised JavaScript code." },
@@ -143,7 +147,8 @@ const App = () => {
             setLoadingProgress(100);
 
             setGeneratedPage({ html: html_v2, css: css_v2, js: js_v2 });
-            updateStatus("Generation complete! Opening page...");
+            updateStep("Generation complete! Opening page...");
+            updateStatus("All steps completed successfully!");
             setTimeout(() => {
                 setShowGeneratedPage(true);
                 setIsLoading(false);
@@ -151,7 +156,8 @@ const App = () => {
 
         } catch (error) {
             console.error("Error during page generation:", error);
-            setLoadingStatus("An error occurred. Please try again.");
+            updateStep("An error occurred. Please try again.");
+            updateStatus(error.message || "An unknown error occurred.");
             setIsLoading(false);
         }
     };
@@ -187,7 +193,7 @@ const App = () => {
             </form>
 
             {isLoading && (
-                <div className="loading-bar-container" title={loadingStatus}>
+                <div className="loading-bar-container" title={stepDescription}>
                     <div className="loading-bar-progress" style={{ width: `${loadingProgress}%` }}></div>
                     <div className="loading-bar-text-container">
                         <p className="loading-bar-text">{loadingTextContent}</p>
