@@ -43,9 +43,11 @@ const App = () => {
         setGeneratedPage(null);
 
         try {
+            const updateStatus = (text) => setLoadingStatus(text.replace(/\n/g, ' '));
+
             // Step 1: Analysis
-            setLoadingStatus("Step 1/4: Analyzing prompt and planning structure...");
-            setLoadingProgress(10);
+            updateStatus("Step 1/8: Analyzing prompt and planning structure...");
+            setLoadingProgress(5);
             const analysisCompletion = await websim.chat.completions.create({
                 messages: [
                     { role: "system", content: "You are a web development planning assistant. Analyze the user's prompt and create a concise plan for building a webpage. Describe the key components, layout, and functionality. This plan will be used to guide the generation of HTML, CSS, and JavaScript." },
@@ -53,43 +55,95 @@ const App = () => {
                 ],
             });
             const analysis = analysisCompletion.content;
-            setLoadingProgress(25);
+            updateStatus(analysis);
+            setLoadingProgress(12.5);
 
-            // Step 2: HTML
-            setLoadingStatus("Step 2/4: Generating HTML...");
-            const htmlCompletion = await websim.chat.completions.create({
+            // Step 2: HTML (v1)
+            updateStatus("Step 2/8: Generating initial HTML...");
+            const htmlCompletion_v1 = await websim.chat.completions.create({
                 messages: [
                     { role: "system", content: "You are an expert HTML developer. Based on the user's prompt and the provided development plan, generate clean, semantic HTML code for the webpage. Do not include any CSS, JavaScript, or markdown formatting. Respond with only the raw HTML code inside a <body> tag." },
                     { role: "user", content: `Prompt: "${promptText}"\n\nDevelopment Plan: ${analysis}` },
                 ],
             });
-            const html = htmlCompletion.content.replace(/```html|```/g, '').trim();
-            setLoadingProgress(50);
+            const html_v1 = htmlCompletion_v1.content.replace(/```html|```/g, '').trim();
+            updateStatus(html_v1);
+            setLoadingProgress(25);
 
-            // Step 3: CSS
-            setLoadingStatus("Step 3/4: Generating CSS...");
-            const cssCompletion = await websim.chat.completions.create({
+            // Step 3: CSS (v1)
+            updateStatus("Step 3/8: Generating initial CSS...");
+            const cssCompletion_v1 = await websim.chat.completions.create({
                 messages: [
                     { role: "system", content: "You are an expert CSS developer. Based on the user's prompt, the development plan, and the provided HTML, generate CSS to style the webpage. Do not include any HTML, JavaScript, or markdown formatting. Respond with only the raw CSS code." },
-                    { role: "user", content: `Prompt: "${promptText}"\n\nPlan: ${analysis}\n\nHTML:\n${html}` },
+                    { role: "user", content: `Prompt: "${promptText}"\n\nPlan: ${analysis}\n\nHTML:\n${html_v1}` },
                 ],
             });
-            const css = cssCompletion.content.replace(/```css|```/g, '').trim();
+            const css_v1 = cssCompletion_v1.content.replace(/```css|```/g, '').trim();
+            updateStatus(css_v1);
+            setLoadingProgress(37.5);
+
+            // Step 4: JavaScript (v1)
+            updateStatus("Step 4/8: Generating initial JavaScript...");
+            const jsCompletion_v1 = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an expert JavaScript developer. Based on the user's prompt, plan, and HTML, generate the necessary JavaScript to make the page interactive. Do not include any HTML, CSS, or markdown formatting. Respond with only the raw JavaScript code." },
+                    { role: "user", content: `Prompt: "${promptText}"\n\nPlan: ${analysis}\n\nHTML:\n${html_v1}` },
+                ],
+            });
+            const js_v1 = jsCompletion_v1.content.replace(/```javascript|```js|```/g, '').trim();
+            updateStatus(js_v1);
+            setLoadingProgress(50);
+
+            // Step 5: Critique
+            updateStatus("Step 5/8: Critiquing generated code...");
+            const critiqueCompletion = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are a senior web developer performing a code review. Analyze the provided HTML, CSS, and JavaScript. Provide a concise critique and actionable suggestions for improvement in terms of structure, style, functionality, and best practices. This critique will guide a second generation pass." },
+                    { role: "user", content: `Original Prompt: "${promptText}"\n\nHTML:\n${html_v1}\n\nCSS:\n${css_v1}\n\nJavaScript:\n${js_v1}` },
+                ],
+            });
+            const critique = critiqueCompletion.content;
+            updateStatus(critique);
+            setLoadingProgress(62.5);
+
+            // Step 6: HTML (v2)
+            updateStatus("Step 6/8: Refining HTML based on critique...");
+            const htmlCompletion_v2 = await websim.chat.completions.create({
+                 messages: [
+                    { role: "system", content: "You are an expert HTML developer. Revise the initial HTML based on the provided critique to improve it. Respond with only the complete, raw, revised HTML code for the <body> tag." },
+                    { role: "user", content: `Critique:\n${critique}\n\nOriginal HTML:\n${html_v1}` },
+                ],
+            });
+            const html_v2 = htmlCompletion_v2.content.replace(/```html|```/g, '').trim();
+            updateStatus(html_v2);
             setLoadingProgress(75);
 
-            // Step 4: JavaScript
-            setLoadingStatus("Step 4/4: Generating JavaScript...");
-            const jsCompletion = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert JavaScript developer. Based on the user's prompt, plan, HTML, and CSS, generate the necessary JavaScript to make the page interactive. Do not include any HTML, CSS, or markdown formatting. Respond with only the raw JavaScript code." },
-                    { role: "user", content: `Prompt: "${promptText}"\n\nPlan: ${analysis}\n\nHTML:\n${html}` },
+            // Step 7: CSS (v2)
+            updateStatus("Step 7/8: Refining CSS based on critique...");
+            const cssCompletion_v2 = await websim.chat.completions.create({
+                 messages: [
+                    { role: "system", content: "You are an expert CSS developer. Revise the initial CSS based on the provided critique and the (potentially updated) HTML. Respond with only the complete, raw, revised CSS code." },
+                    { role: "user", content: `Critique:\n${critique}\n\nRevised HTML:\n${html_v2}\n\nOriginal CSS:\n${css_v1}` },
                 ],
             });
-            const js = jsCompletion.content.replace(/```javascript|```js|```/g, '').trim();
+            const css_v2 = cssCompletion_v2.content.replace(/```css|```/g, '').trim();
+            updateStatus(css_v2);
+            setLoadingProgress(87.5);
+
+            // Step 8: JavaScript (v2)
+            updateStatus("Step 8/8: Refining JavaScript based on critique...");
+            const jsCompletion_v2 = await websim.chat.completions.create({
+                messages: [
+                    { role: "system", content: "You are an expert JavaScript developer. Revise the initial JavaScript based on the provided critique and the revised HTML. Respond with only the complete, raw, revised JavaScript code." },
+                    { role: "user", content: `Critique:\n${critique}\n\nRevised HTML:\n${html_v2}\n\nOriginal JavaScript:\n${js_v1}` },
+                ],
+            });
+            const js_v2 = jsCompletion_v2.content.replace(/```javascript|```js|```/g, '').trim();
+            updateStatus(js_v2);
             setLoadingProgress(100);
 
-            setGeneratedPage({ html, css, js });
-            setLoadingStatus("Generation complete! Opening page...");
+            setGeneratedPage({ html: html_v2, css: css_v2, js: js_v2 });
+            updateStatus("Generation complete! Opening page...");
             setTimeout(() => {
                 setShowGeneratedPage(true);
                 setIsLoading(false);
@@ -108,6 +162,11 @@ const App = () => {
         setLoadingProgress(0);
         setLoadingStatus("");
     };
+
+    const loadingTextContent = useMemo(() => {
+        const repeatedText = (loadingStatus + " ").repeat(10);
+        return repeatedText;
+    }, [loadingStatus]);
 
     return (
         <div className="app-container">
@@ -131,7 +190,7 @@ const App = () => {
                 <div className="loading-bar-container" title={loadingStatus}>
                     <div className="loading-bar-progress" style={{ width: `${loadingProgress}%` }}></div>
                     <div className="loading-bar-text-container">
-                        <p className="loading-bar-text">{loadingStatus}&nbsp;&nbsp;&nbsp;&nbsp;{loadingStatus}&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                        <p className="loading-bar-text">{loadingTextContent}</p>
                     </div>
                 </div>
             )}
@@ -185,4 +244,3 @@ const GeneratedPageView = ({ page, onClose }) => {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(<App />);
-
