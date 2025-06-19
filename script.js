@@ -32,14 +32,14 @@ const App = () => {
         }
     };
 
-    const handlePromptClick = async (promptText, promptId) => {
+    const handlePromptClick = async (promptText) => {
         if (isLoading) return;
 
         setIsLoading(true);
         setLoadingProgress(0);
         setGeneratedPage(null);
         setStepDescription("");
-        setLoadingStatus("Initializing generation process...");
+        setLoadingStatus("Checking for existing generation data...");
 
         const updateCallbacks = {
             updateProgress: (step) => setLoadingProgress((step / 12) * 100),
@@ -55,38 +55,33 @@ const App = () => {
         };
 
         try {
-            // Check if this prompt has cached results
-            const promptRecord = prompts.find(p => p.id === promptId);
-            const hasCachedResults = promptRecord && promptRecord.cachedHtml;
-            
+            // Check for existing generation data
+            const existingGenerations = room.collection('page_generations_v1').filter({ prompt_text: promptText }).getList();
+            let existingGeneration = existingGenerations.length > 0 ? existingGenerations[0] : null;
+
             let result;
-            if (hasCachedResults) {
-                updateCallbacks.updateStatus("Found cached version - iterating to improve it...");
-                console.log("Using cached results as starting point for iteration");
-                result = await PageGenerator.iterateOnCachedPage(
-                    promptText, 
-                    {
-                        html: promptRecord.cachedHtml,
-                        css: promptRecord.cachedCss,
-                        js: promptRecord.cachedJs
-                    },
-                    updateCallbacks
-                );
+            if (existingGeneration && existingGeneration.is_complete) {
+                // Load existing complete generation and refine it
+                updateCallbacks.updateStep("Found existing generation. Loading and refining...");
+                updateCallbacks.updateStatus("Loading previous generation for refinement...");
+                setGeneratedPage({
+                    html: existingGeneration.html_v3,
+                    css: existingGeneration.css_v3,
+                    js: existingGeneration.js_v3
+                });
+                
+                // Continue with refinement steps 5-12
+                result = await PageGenerator.refineExistingPage(existingGeneration, updateCallbacks);
+            } else if (existingGeneration && !existingGeneration.is_complete) {
+                // Continue incomplete generation
+                updateCallbacks.updateStep("Found incomplete generation. Continuing...");
+                result = await PageGenerator.continueGeneration(existingGeneration, promptText, updateCallbacks);
             } else {
-                updateCallbacks.updateStatus("No cached version found - generating from scratch...");
-                console.log("No cached results found, generating from scratch");
+                // Start new generation
+                updateCallbacks.updateStep("Starting new generation...");
                 result = await PageGenerator.generatePage(promptText, updateCallbacks);
             }
-            
-            // Cache the results
-            console.log("Caching generated results...");
-            await room.collection('prompts_v1').update(promptId, {
-                cachedHtml: result.html,
-                cachedCss: result.css,
-                cachedJs: result.js,
-                lastGenerated: new Date().toISOString()
-            });
-            
+
             setGeneratedPage(result);
             updateCallbacks.updateStep("Generation complete! Opening page...");
             updateCallbacks.updateStatus("All steps completed successfully!");

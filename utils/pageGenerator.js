@@ -6,6 +6,13 @@ const PageGenerator = {
         console.log(`Starting generation for prompt: "${promptText}"`);
 
         try {
+            // Create new generation record
+            const generationRecord = await room.collection('page_generations_v1').create({
+                prompt_text: promptText,
+                completed_steps: 0,
+                is_complete: false
+            });
+
             // Step 1: Analysis
             updateStep(`Step 1/${TOTAL_STEPS}: Analyzing prompt and planning structure...`);
             updateProgress(0);
@@ -17,6 +24,12 @@ const PageGenerator = {
             });
             const analysis = analysisCompletion.content;
             updateStatus(analysis);
+            
+            // Save step 1
+            await room.collection('page_generations_v1').update(generationRecord.id, {
+                analysis: analysis,
+                completed_steps: 1
+            });
             updateProgress(1);
 
             // Step 2: HTML (v1)
@@ -29,6 +42,12 @@ const PageGenerator = {
             });
             const html_v1 = htmlCompletion_v1.content.replace(/```html|```/g, '').trim();
             updateStatus(html_v1);
+            
+            // Save step 2
+            await room.collection('page_generations_v1').update(generationRecord.id, {
+                html_v1: html_v1,
+                completed_steps: 2
+            });
             updateProgress(2);
 
             // Step 3: CSS (v1)
@@ -41,6 +60,12 @@ const PageGenerator = {
             });
             const css_v1 = cssCompletion_v1.content.replace(/```css|```/g, '').trim();
             updateStatus(css_v1);
+            
+            // Save step 3
+            await room.collection('page_generations_v1').update(generationRecord.id, {
+                css_v1: css_v1,
+                completed_steps: 3
+            });
             updateProgress(3);
 
             // Step 4: JavaScript (v1)
@@ -53,145 +78,26 @@ const PageGenerator = {
             });
             const js_v1 = jsCompletion_v1.content.replace(/```javascript|```js|```/g, '').trim();
             updateStatus(js_v1);
+            
+            // Save step 4
+            await room.collection('page_generations_v1').update(generationRecord.id, {
+                js_v1: js_v1,
+                completed_steps: 4
+            });
             updateProgress(4);
 
-            // Step 5: Visual Critique with Screenshot
-            updateStep(`Step 5/${TOTAL_STEPS}: Capturing screenshot and performing visual critique...`);
-            updateStatus("Generating screenshot for visual analysis...");
-            const screenshotUrl = await this.takeScreenshot(html_v1, css_v1, js_v1);
-            updateStatus("Screenshot captured, analyzing visual implementation...");
+            // Continue with remaining steps and save each one...
+            const result = await this.continueFromStep5({
+                id: generationRecord.id,
+                prompt_text: promptText,
+                analysis: analysis,
+                html_v1: html_v1,
+                css_v1: css_v1,
+                js_v1: js_v1,
+                completed_steps: 4
+            }, updateCallbacks);
 
-            const critiqueCompletion_v1 = await websim.chat.completions.create({
-                messages: [
-                     {
-                        role: "system",
-                        content: "You are a senior web developer and UI/UX expert. Analyze the provided screenshot and code (HTML, CSS, JavaScript). Provide a detailed critique focusing on: 1) Visual appeal and layout quality, 2) Functionality and user experience, 3) Responsiveness and accessibility, 4) Code structure and best practices. Offer specific, actionable suggestions for improvement. This critique will guide the next iteration."
-                    },
-                    {
-                        role: "user",
-                        content: [
-                            { 
-                                type: "text", 
-                                text: `Original Prompt: "${promptText}"\n\nAnalyze this first implementation. What works well visually and functionally? What specific improvements are needed?\n\nHTML:\n${html_v1}\n\nCSS:\n${css_v1}\n\nJavaScript:\n${js_v1}`
-                            },
-                            {
-                                type: "image_url",
-                                image_url: { url: screenshotUrl },
-                            },
-                        ],
-                    },
-                ],
-            });
-            const critique_v1 = critiqueCompletion_v1.content;
-            updateStatus(`Visual analysis complete: ${critique_v1.substring(0, 200)}...`);
-            console.log("Step 5 - Visual Critique v1:", critique_v1);
-            updateProgress(5);
-
-            // Step 6: HTML (v2)
-            updateStep(`Step 6/${TOTAL_STEPS}: Refining HTML based on visual critique...`);
-            const htmlCompletion_v2 = await websim.chat.completions.create({
-                 messages: [
-                    { role: "system", content: "You are an expert HTML developer. Revise the initial HTML based on the provided critique to improve it. Respond with only the complete, raw, revised HTML code for the <body> tag." },
-                    { role: "user", content: `Critique:\n${critique_v1}\n\nOriginal HTML:\n${html_v1}` },
-                ],
-            });
-            const html_v2 = htmlCompletion_v2.content.replace(/```html|```/g, '').trim();
-            updateStatus(html_v2);
-            updateProgress(6);
-
-            // Step 7: CSS (v2)
-            updateStep(`Step 7/${TOTAL_STEPS}: Refining CSS based on visual critique...`);
-            const cssCompletion_v2 = await websim.chat.completions.create({
-                 messages: [
-                    { role: "system", content: "You are an expert CSS developer. Revise the initial CSS based on the provided critique and the (potentially updated) HTML. Respond with only the complete, raw, revised CSS code." },
-                    { role: "user", content: `Critique:\n${critique_v1}\n\nRevised HTML:\n${html_v2}\n\nOriginal CSS:\n${css_v1}` },
-                ],
-            });
-            const css_v2 = cssCompletion_v2.content.replace(/```css|```/g, '').trim();
-            updateStatus(css_v2);
-            updateProgress(7);
-
-            // Step 8: JavaScript (v2)
-            updateStep(`Step 8/${TOTAL_STEPS}: Refining JavaScript based on visual critique...`);
-            const jsCompletion_v2 = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert JavaScript developer. Revise the initial JavaScript based on the provided critique and the revised HTML. Respond with only the complete, raw, revised JavaScript code." },
-                    { role: "user", content: `Critique:\n${critique_v1}\n\nRevised HTML:\n${html_v2}\n\nOriginal JavaScript:\n${js_v1}` },
-                ],
-            });
-            const js_v2 = jsCompletion_v2.content.replace(/```javascript|```js|```/g, '').trim();
-            updateStatus(js_v2);
-            updateProgress(8);
-
-            // Step 9: Second Visual Critique with Updated Screenshot
-            updateStep(`Step 9/${TOTAL_STEPS}: Capturing updated screenshot for final visual analysis...`);
-            updateStatus("Generating screenshot of improved version...");
-            const screenshotUrl_v2 = await this.takeScreenshot(html_v2, css_v2, js_v2);
-            updateStatus("Updated screenshot captured, performing comparative analysis...");
-
-            const critiqueCompletion_v2 = await websim.chat.completions.create({
-                messages: [
-                    { 
-                        role: "system", 
-                        content: "You are a senior web developer performing a final visual and code review. Compare the new screenshot with the previous critique to assess improvements. Analyze the updated HTML, CSS, and JavaScript for: 1) Visual improvements and remaining issues, 2) Code quality and structure, 3) Functionality and user experience, 4) Final recommendations for production readiness. Provide specific actionable suggestions for the final refinement pass."
-                    },
-                    { 
-                        role: "user", 
-                        content: [
-                            {
-                                type: "text",
-                                text: `Original Prompt: "${promptText}"\n\nPrevious Critique: ${critique_v1}\n\nAnalyze the improvements made in this second iteration. What visual and functional improvements were successfully implemented? What still needs refinement?\n\nRevised HTML:\n${html_v2}\n\nRevised CSS:\n${css_v2}\n\nRevised JavaScript:\n${js_v2}`
-                            },
-                            {
-                                type: "image_url",
-                                image_url: { url: screenshotUrl_v2 },
-                            },
-                        ],
-                    },
-                ],
-            });
-            const critique_v2 = critiqueCompletion_v2.content;
-            updateStatus(`Final visual analysis complete: ${critique_v2.substring(0, 200)}...`);
-            console.log("Step 9 - Visual Critique v2:", critique_v2);
-            updateProgress(9);
-
-            // Step 10: HTML (v3)
-            updateStep(`Step 10/${TOTAL_STEPS}: Applying final HTML refinements...`);
-            const htmlCompletion_v3 = await websim.chat.completions.create({
-                 messages: [
-                    { role: "system", content: "You are an expert HTML developer. Apply the final revisions to the HTML based on the provided critique. Respond with only the complete, final, raw HTML code for the <body> tag." },
-                    { role: "user", content: `Final Critique:\n${critique_v2}\n\nPrevious HTML:\n${html_v2}` },
-                ],
-            });
-            const html_v3 = htmlCompletion_v3.content.replace(/```html|```/g, '').trim();
-            updateStatus(html_v3);
-            updateProgress(10);
-            
-            // Step 11: CSS (v3)
-            updateStep(`Step 11/${TOTAL_STEPS}: Applying final CSS refinements...`);
-            const cssCompletion_v3 = await websim.chat.completions.create({
-                 messages: [
-                    { role: "system", content: "You are an expert CSS developer. Apply the final revisions to the CSS based on the critique and the latest HTML. Respond with only the complete, final, raw CSS code." },
-                    { role: "user", content: `Final Critique:\n${critique_v2}\n\nFinal HTML:\n${html_v3}\n\nPrevious CSS:\n${css_v2}` },
-                ],
-            });
-            const css_v3 = cssCompletion_v3.content.replace(/```css|```/g, '').trim();
-            updateStatus(css_v3);
-            updateProgress(11);
-            
-            // Step 12: JavaScript (v3)
-            updateStep(`Step 12/${TOTAL_STEPS}: Applying final JavaScript refinements...`);
-            const jsCompletion_v3 = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert JavaScript developer. Apply the final revisions to the JavaScript based on the critique and the latest HTML. Respond with only the complete, final, raw JavaScript code." },
-                    { role: "user", content: `Final Critique:\n${critique_v2}\n\nFinal HTML:\n${html_v3}\n\nPrevious JavaScript:\n${js_v2}` },
-                ],
-            });
-            const js_v3 = jsCompletion_v3.content.replace(/```javascript|```js|```/g, '').trim();
-            updateStatus(js_v3);
-            updateProgress(12);
-
-            return { html: html_v3, css: css_v3, js: js_v3 };
+            return result;
 
         } catch (error) {
             console.error("Error during page generation:", error);
@@ -199,158 +105,230 @@ const PageGenerator = {
         }
     },
 
-    async iterateOnCachedPage(promptText, cachedPage, updateCallbacks) {
+    async continueFromStep5(generationData, updateCallbacks) {
         const { updateProgress, updateStatus, updateStep } = updateCallbacks;
         const TOTAL_STEPS = 12;
 
-        console.log(`Starting iteration on cached page for prompt: "${promptText}"`);
-        console.log("Cached page HTML length:", cachedPage.html.length);
-        console.log("Cached page CSS length:", cachedPage.css.length);
-        console.log("Cached page JS length:", cachedPage.js.length);
+        // Step 5: Visual Critique with Screenshot
+        updateStep(`Step 5/${TOTAL_STEPS}: Capturing screenshot and performing visual critique...`);
+        updateStatus("Generating screenshot for visual analysis...");
+        const screenshotUrl = await this.takeScreenshot(generationData.html_v1, generationData.css_v1, generationData.js_v1);
+        updateStatus("Screenshot captured, analyzing visual implementation...");
 
-        try {
-            // Step 1-2: Skip initial analysis, go straight to visual critique
-            updateStep(`Step 1/${TOTAL_STEPS}: Analyzing cached implementation...`);
-            updateProgress(1);
-            updateStatus("Taking screenshot of current cached version...");
-            
-            const screenshotUrl = await this.takeScreenshot(cachedPage.html, cachedPage.css, cachedPage.js);
-            updateStatus("Screenshot captured, analyzing current implementation...");
+        const critiqueCompletion_v1 = await websim.chat.completions.create({
+            messages: [
+                 {
+                    role: "system",
+                    content: "You are a senior web developer and UI/UX expert. Analyze the provided screenshot and code (HTML, CSS, JavaScript). Provide a detailed critique focusing on: 1) Visual appeal and layout quality, 2) Functionality and user experience, 3) Responsiveness and accessibility, 4) Code structure and best practices. Offer specific, actionable suggestions for improvement. This critique will guide the next iteration."
+                },
+                {
+                    role: "user",
+                    content: [
+                        { 
+                            type: "text", 
+                            text: `Original Prompt: "${generationData.prompt_text}"\n\nAnalyze this first implementation. What works well visually and functionally? What specific improvements are needed?\n\nHTML:\n${generationData.html_v1}\n\nCSS:\n${generationData.css_v1}\n\nJavaScript:\n${generationData.js_v1}`
+                        },
+                        {
+                            type: "image_url",
+                            image_url: { url: screenshotUrl },
+                        },
+                    ],
+                },
+            ],
+        });
+        const critique_v1 = critiqueCompletion_v1.content;
+        updateStatus(`Visual analysis complete: ${critique_v1.substring(0, 200)}...`);
+        
+        // Save step 5
+        await room.collection('page_generations_v1').update(generationData.id, {
+            critique_v1: critique_v1,
+            screenshot_v1: screenshotUrl,
+            completed_steps: 5
+        });
+        updateProgress(5);
 
-            const iterationCritique = await websim.chat.completions.create({
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are a senior web developer performing an iterative improvement analysis. This is a previously generated webpage that needs further refinement. Analyze the screenshot and code to identify: 1) Areas that could be enhanced visually, 2) Functionality that could be improved or added, 3) User experience optimizations, 4) Performance or code quality improvements. Provide specific, actionable suggestions for making this implementation significantly better."
-                    },
-                    {
-                        role: "user",
-                        content: [
-                            { 
-                                type: "text", 
-                                text: `Original Prompt: "${promptText}"\n\nThis is a cached webpage that needs iterative improvement. What specific enhancements can make this better?\n\nCurrent HTML:\n${cachedPage.html}\n\nCurrent CSS:\n${cachedPage.css}\n\nCurrent JavaScript:\n${cachedPage.js}`
-                            },
-                            {
-                                type: "image_url",
-                                image_url: { url: screenshotUrl },
-                            },
-                        ],
-                    },
-                ],
-            });
-            const critique = iterationCritique.content;
-            updateStatus(`Iteration analysis complete: ${critique.substring(0, 200)}...`);
-            console.log("Iteration Critique:", critique);
-            updateProgress(2);
+        // Continue with steps 6-12...
+        const result = await this.completeRemainingSteps({
+            ...generationData,
+            critique_v1: critique_v1,
+            screenshot_v1: screenshotUrl,
+            completed_steps: 5
+        }, updateCallbacks);
 
-            // Steps 3-5: First iteration improvements
-            updateStep(`Step 3/${TOTAL_STEPS}: Enhancing HTML based on analysis...`);
-            const htmlCompletion_iter1 = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert HTML developer. Improve the provided HTML based on the iteration critique. Focus on adding new features, improving structure, and enhancing semantic markup. Respond with only the complete, improved HTML code for the <body> tag." },
-                    { role: "user", content: `Iteration Critique:\n${critique}\n\nCurrent HTML:\n${cachedPage.html}` },
-                ],
-            });
-            const html_iter1 = htmlCompletion_iter1.content.replace(/```html|```/g, '').trim();
-            updateStatus(html_iter1);
-            updateProgress(3);
+        return result;
+    },
 
-            updateStep(`Step 4/${TOTAL_STEPS}: Enhancing CSS based on analysis...`);
-            const cssCompletion_iter1 = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert CSS developer. Improve the provided CSS based on the iteration critique and enhanced HTML. Focus on visual enhancements, animations, responsiveness, and modern styling techniques. Respond with only the complete, improved CSS code." },
-                    { role: "user", content: `Iteration Critique:\n${critique}\n\nEnhanced HTML:\n${html_iter1}\n\nCurrent CSS:\n${cachedPage.css}` },
-                ],
-            });
-            const css_iter1 = cssCompletion_iter1.content.replace(/```css|```/g, '').trim();
-            updateStatus(css_iter1);
-            updateProgress(4);
+    async completeRemainingSteps(generationData, updateCallbacks) {
+        const { updateProgress, updateStatus, updateStep } = updateCallbacks;
+        const TOTAL_STEPS = 12;
 
-            updateStep(`Step 5/${TOTAL_STEPS}: Enhancing JavaScript based on analysis...`);
-            const jsCompletion_iter1 = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert JavaScript developer. Improve the provided JavaScript based on the iteration critique and enhanced HTML. Focus on adding new interactive features, improving user experience, and optimizing performance. Respond with only the complete, improved JavaScript code." },
-                    { role: "user", content: `Iteration Critique:\n${critique}\n\nEnhanced HTML:\n${html_iter1}\n\nCurrent JavaScript:\n${cachedPage.js}` },
-                ],
-            });
-            const js_iter1 = jsCompletion_iter1.content.replace(/```javascript|```js|```/g, '').trim();
-            updateStatus(js_iter1);
-            updateProgress(5);
+        // Step 6: HTML (v2)
+        updateStep(`Step 6/${TOTAL_STEPS}: Refining HTML based on visual critique...`);
+        const htmlCompletion_v2 = await websim.chat.completions.create({
+             messages: [
+                { role: "system", content: "You are an expert HTML developer. Revise the initial HTML based on the provided critique to improve it. Respond with only the complete, raw, revised HTML code for the <body> tag." },
+                { role: "user", content: `Critique:\n${generationData.critique_v1}\n\nOriginal HTML:\n${generationData.html_v1}` },
+            ],
+        });
+        const html_v2 = htmlCompletion_v2.content.replace(/```html|```/g, '').trim();
+        updateStatus(html_v2);
+        
+        await room.collection('page_generations_v1').update(generationData.id, {
+            html_v2: html_v2,
+            completed_steps: 6
+        });
+        updateProgress(6);
 
-            // Steps 6-8: Continue with existing refinement process
-            updateStep(`Step 6/${TOTAL_STEPS}: Visual validation of improvements...`);
-            updateStatus("Capturing screenshot of improved version...");
-            const screenshotUrl_iter1 = await this.takeScreenshot(html_iter1, css_iter1, js_iter1);
-            updateStatus("Analyzing visual improvements...");
+        // Step 7: CSS (v2)
+        updateStep(`Step 7/${TOTAL_STEPS}: Refining CSS based on visual critique...`);
+        const cssCompletion_v2 = await websim.chat.completions.create({
+             messages: [
+                { role: "system", content: "You are an expert CSS developer. Revise the initial CSS based on the provided critique and the (potentially updated) HTML. Respond with only the complete, raw, revised CSS code." },
+                { role: "user", content: `Critique:\n${generationData.critique_v1}\n\nRevised HTML:\n${html_v2}\n\nOriginal CSS:\n${generationData.css_v1}` },
+            ],
+        });
+        const css_v2 = cssCompletion_v2.content.replace(/```css|```/g, '').trim();
+        updateStatus(css_v2);
+        
+        await room.collection('page_generations_v1').update(generationData.id, {
+            css_v2: css_v2,
+            completed_steps: 7
+        });
+        updateProgress(7);
 
-            const refinementCritique = await websim.chat.completions.create({
-                messages: [
-                    { 
-                        role: "system", 
-                        content: "You are a senior web developer performing final validation of iterative improvements. Compare this enhanced version with the original critique to assess progress. Provide final refinement suggestions for production readiness."
-                    },
-                    { 
-                        role: "user", 
-                        content: [
-                            {
-                                type: "text",
-                                text: `Original Prompt: "${promptText}"\n\nOriginal Critique: ${critique}\n\nHow well were the improvements implemented? What final touches are needed?\n\nImproved HTML:\n${html_iter1}\n\nImproved CSS:\n${css_iter1}\n\nImproved JavaScript:\n${js_iter1}`
-                            },
-                            {
-                                type: "image_url",
-                                image_url: { url: screenshotUrl_iter1 },
-                            },
-                        ],
-                    },
-                ],
-            });
-            const refinement = refinementCritique.content;
-            updateStatus(`Final refinement analysis: ${refinement.substring(0, 200)}...`);
-            console.log("Refinement Critique:", refinement);
-            updateProgress(6);
+        // Step 8: JavaScript (v2)
+        updateStep(`Step 8/${TOTAL_STEPS}: Refining JavaScript based on visual critique...`);
+        const jsCompletion_v2 = await websim.chat.completions.create({
+            messages: [
+                { role: "system", content: "You are an expert JavaScript developer. Revise the initial JavaScript based on the provided critique and the revised HTML. Respond with only the complete, raw, revised JavaScript code." },
+                { role: "user", content: `Critique:\n${generationData.critique_v1}\n\nRevised HTML:\n${html_v2}\n\nOriginal JavaScript:\n${generationData.js_v1}` },
+            ],
+        });
+        const js_v2 = jsCompletion_v2.content.replace(/```javascript|```js|```/g, '').trim();
+        updateStatus(js_v2);
+        
+        await room.collection('page_generations_v1').update(generationData.id, {
+            js_v2: js_v2,
+            completed_steps: 8
+        });
+        updateProgress(8);
 
-            // Steps 9-12: Final polishing
-            updateStep(`Step 9/${TOTAL_STEPS}: Final HTML polishing...`);
-            const htmlCompletion_final = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert HTML developer. Apply final polish to the HTML based on the refinement critique. Respond with only the complete, production-ready HTML code for the <body> tag." },
-                    { role: "user", content: `Final Refinement:\n${refinement}\n\nCurrent HTML:\n${html_iter1}` },
-                ],
-            });
-            const html_final = htmlCompletion_final.content.replace(/```html|```/g, '').trim();
-            updateStatus(html_final);
-            updateProgress(9);
+        // Step 9: Second Visual Critique with Updated Screenshot
+        updateStep(`Step 9/${TOTAL_STEPS}: Capturing updated screenshot for final visual analysis...`);
+        updateStatus("Generating screenshot of improved version...");
+        const screenshotUrl_v2 = await this.takeScreenshot(html_v2, css_v2, js_v2);
+        updateStatus("Updated screenshot captured, performing comparative analysis...");
 
-            updateStep(`Step 10/${TOTAL_STEPS}: Final CSS polishing...`);
-            const cssCompletion_final = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert CSS developer. Apply final polish to the CSS based on the refinement critique and final HTML. Respond with only the complete, production-ready CSS code." },
-                    { role: "user", content: `Final Refinement:\n${refinement}\n\nFinal HTML:\n${html_final}\n\nCurrent CSS:\n${css_iter1}` },
-                ],
-            });
-            const css_final = cssCompletion_final.content.replace(/```css|```/g, '').trim();
-            updateStatus(css_final);
-            updateProgress(10);
+        const critiqueCompletion_v2 = await websim.chat.completions.create({
+            messages: [
+                { 
+                    role: "system", 
+                    content: "You are a senior web developer performing a final visual and code review. Compare the new screenshot with the previous critique to assess improvements. Analyze the updated HTML, CSS, and JavaScript for: 1) Visual improvements and remaining issues, 2) Code quality and structure, 3) Functionality and user experience, 4) Final recommendations for production readiness. Provide specific actionable suggestions for the final refinement pass."
+                },
+                { 
+                    role: "user", 
+                    content: [
+                        {
+                            type: "text",
+                            text: `Original Prompt: "${generationData.prompt_text}"\n\nPrevious Critique: ${generationData.critique_v1}\n\nAnalyze the improvements made in this second iteration. What visual and functional improvements were successfully implemented? What still needs refinement?\n\nRevised HTML:\n${html_v2}\n\nRevised CSS:\n${css_v2}\n\nRevised JavaScript:\n${js_v2}`
+                        },
+                        {
+                            type: "image_url",
+                            image_url: { url: screenshotUrl_v2 },
+                        },
+                    ],
+                },
+            ],
+        });
+        const critique_v2 = critiqueCompletion_v2.content;
+        updateStatus(`Final visual analysis complete: ${critique_v2.substring(0, 200)}...`);
+        
+        await room.collection('page_generations_v1').update(generationData.id, {
+            critique_v2: critique_v2,
+            screenshot_v2: screenshotUrl_v2,
+            completed_steps: 9
+        });
+        updateProgress(9);
 
-            updateStep(`Step 11/${TOTAL_STEPS}: Final JavaScript polishing...`);
-            const jsCompletion_final = await websim.chat.completions.create({
-                messages: [
-                    { role: "system", content: "You are an expert JavaScript developer. Apply final polish to the JavaScript based on the refinement critique and final HTML. Respond with only the complete, production-ready JavaScript code." },
-                    { role: "user", content: `Final Refinement:\n${refinement}\n\nFinal HTML:\n${html_final}\n\nCurrent JavaScript:\n${js_iter1}` },
-                ],
-            });
-            const js_final = jsCompletion_final.content.replace(/```javascript|```js|```/g, '').trim();
-            updateStatus(js_final);
-            updateProgress(11);
+        // Step 10: HTML (v3)
+        updateStep(`Step 10/${TOTAL_STEPS}: Applying final HTML refinements...`);
+        const htmlCompletion_v3 = await websim.chat.completions.create({
+             messages: [
+                { role: "system", content: "You are an expert HTML developer. Apply the final revisions to the HTML based on the provided critique. Respond with only the complete, final, raw HTML code for the <body> tag." },
+                { role: "user", content: `Final Critique:\n${critique_v2}\n\nPrevious HTML:\n${html_v2}` },
+            ],
+        });
+        const html_v3 = htmlCompletion_v3.content.replace(/```html|```/g, '').trim();
+        updateStatus(html_v3);
+        
+        await room.collection('page_generations_v1').update(generationData.id, {
+            html_v3: html_v3,
+            completed_steps: 10
+        });
+        updateProgress(10);
+        
+        // Step 11: CSS (v3)
+        updateStep(`Step 11/${TOTAL_STEPS}: Applying final CSS refinements...`);
+        const cssCompletion_v3 = await websim.chat.completions.create({
+             messages: [
+                { role: "system", content: "You are an expert CSS developer. Apply the final revisions to the CSS based on the critique and the latest HTML. Respond with only the complete, final, raw CSS code." },
+                { role: "user", content: `Final Critique:\n${critique_v2}\n\nFinal HTML:\n${html_v3}\n\nPrevious CSS:\n${css_v2}` },
+            ],
+        });
+        const css_v3 = cssCompletion_v3.content.replace(/```css|```/g, '').trim();
+        updateStatus(css_v3);
+        
+        await room.collection('page_generations_v1').update(generationData.id, {
+            css_v3: css_v3,
+            completed_steps: 11
+        });
+        updateProgress(11);
+        
+        // Step 12: JavaScript (v3)
+        updateStep(`Step 12/${TOTAL_STEPS}: Applying final JavaScript refinements...`);
+        const jsCompletion_v3 = await websim.chat.completions.create({
+            messages: [
+                { role: "system", content: "You are an expert JavaScript developer. Apply the final revisions to the JavaScript based on the critique and the latest HTML. Respond with only the complete, final, raw JavaScript code." },
+                { role: "user", content: `Final Critique:\n${critique_v2}\n\nFinal HTML:\n${html_v3}\n\nPrevious JavaScript:\n${js_v2}` },
+            ],
+        });
+        const js_v3 = jsCompletion_v3.content.replace(/```javascript|```js|```/g, '').trim();
+        updateStatus(js_v3);
+        
+        // Mark as complete
+        await room.collection('page_generations_v1').update(generationData.id, {
+            js_v3: js_v3,
+            completed_steps: 12,
+            is_complete: true
+        });
+        updateProgress(12);
 
-            updateStep(`Step 12/${TOTAL_STEPS}: Iteration complete!`);
-            updateProgress(12);
+        return { html: html_v3, css: css_v3, js: js_v3 };
+    },
 
-            return { html: html_final, css: css_final, js: js_final };
+    async refineExistingPage(existingGeneration, updateCallbacks) {
+        const { updateProgress, updateStatus, updateStep } = updateCallbacks;
+        
+        updateStep("Refining existing generation with steps 5-12...");
+        updateStatus("Starting refinement process on existing page...");
+        
+        // Start refinement from step 5 with existing data
+        const result = await this.continueFromStep5(existingGeneration, updateCallbacks);
+        return result;
+    },
 
-        } catch (error) {
-            console.error("Error during page iteration:", error);
-            throw error;
+    async continueGeneration(existingGeneration, promptText, updateCallbacks) {
+        const { updateProgress, updateStatus, updateStep } = updateCallbacks;
+        
+        updateStep(`Continuing generation from step ${existingGeneration.completed_steps + 1}...`);
+        updateStatus("Resuming interrupted generation...");
+        
+        if (existingGeneration.completed_steps < 5) {
+            // Continue from where we left off in first phase
+            return await this.generatePage(promptText, updateCallbacks);
+        } else {
+            // Continue from refinement phase
+            return await this.continueFromStep5(existingGeneration, updateCallbacks);
         }
     },
 
