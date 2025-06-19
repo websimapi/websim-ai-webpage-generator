@@ -169,9 +169,11 @@ const App = () => {
         setLoadingStatus("");
     };
 
-    const loadingTextContent = useMemo(() => {
-        const repeatedText = (loadingStatus + " ").repeat(10);
-        return repeatedText;
+    const animationDuration = useMemo(() => {
+        // Adjust scroll speed based on text length to keep it readable
+        const charsPerSecond = 100;
+        const duration = Math.max(10, (loadingStatus.length || 0) / charsPerSecond);
+        return `${duration}s`;
     }, [loadingStatus]);
 
     return (
@@ -196,7 +198,10 @@ const App = () => {
                 <div className="loading-bar-container" title={stepDescription}>
                     <div className="loading-bar-progress" style={{ width: `${loadingProgress}%` }}></div>
                     <div className="loading-bar-text-container">
-                        <p className="loading-bar-text">{loadingTextContent}</p>
+                        <div className="loading-bar-text" style={{ animationDuration }}>
+                            <span className="loading-bar-text-segment">{loadingStatus}</span>
+                            <span className="loading-bar-text-segment">{loadingStatus}</span>
+                        </div>
                     </div>
                 </div>
             )}

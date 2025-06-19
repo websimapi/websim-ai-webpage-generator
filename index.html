@@ -116,19 +116,24 @@
         }
 
         .loading-bar-text {
+            display: flex;
             white-space: nowrap;
-            padding-left: 1rem;
-            padding-right: 1rem;
-            animation: scrollText 15s linear infinite;
+            animation-name: scrollText;
+            animation-timing-function: linear;
+            animation-iteration-count: infinite;
         }
         
+        .loading-bar-text-segment {
+            padding: 0 1rem;
+        }
+
         .loading-bar-container:hover .loading-bar-text {
-            animation: scrollText 10s linear infinite;
+             animation-play-state: paused;
         }
         
         @keyframes scrollText {
             from { transform: translateX(0%); }
-            to { transform: translateX(-100%); }
+            to { transform: translateX(-50%); }
         }
 
         .prompt-list-container {
